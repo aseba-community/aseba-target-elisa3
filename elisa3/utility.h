@@ -30,6 +30,7 @@
 #include "usart.h"
 #include "sensors.h"
 #include "ir_remote_control.h"
+#include "eepromIO.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -67,6 +68,8 @@ unsigned long int getTime100MicroSec();
  * \return none
  */
 void readBatteryLevel();
+
+void resetOdometry();
 
 #ifdef __cplusplus
 } // extern "C"

@@ -42,10 +42,13 @@ ISR(ADC_vect) {
 
 	//LED_BLUE_ON;
 
-	clockTick++;				// this variable is used as base time for timed processes/functions (e,g, delay); 
-								// resolution of 104 us based on adc interrupts
+	if(clockTick == MAX_U32) {
+		clockTick = 0;
+	} else {
+		clockTick++;				// this variable is used as base time for timed processes/functions (e,g, delay); 
+	}								// resolution of 104 us based on adc interrupts
 
-	int value = ADCL;			// get the sample; low byte must be read first!!
+	unsigned int value = ADCL;			// get the sample; low byte must be read first!!
 	value = (ADCH<<8) | value;
 
 	// save the last sampled data in the correct position; the sequence is:
@@ -57,6 +60,17 @@ ISR(ADC_vect) {
 	// current and velocity is done in the motors timers interrupts in which is flagged the pwm 
 	// phase (active=>current or passive=>velocity) of the motors
 	switch(adcSaveDataTo) {
+		case SAVE_TO_PROX_IRCOMM:
+			irCommProxValuesAdc[currentProx+irCommRxWindowSamples*8] = value;
+			// get the min and max values in the sampling window for all the sensors
+			if(irCommMaxSensorValueAdc[currentProx] < value) {
+				irCommMaxSensorValueAdc[currentProx] = value;
+			}
+			if(irCommMinSensorValueAdc[currentProx] > value) {
+				irCommMinSensorValueAdc[currentProx] = value;
+			}
+			currentProx++;
+			break;
 
 		case SAVE_TO_PROX:
 			if(currentProx==14 && measBattery==2) {		// about every 2 seconds the battery level is sampled; both
@@ -68,7 +82,11 @@ ISR(ADC_vect) {
 			}
 
 			if(currentProx & 0x01) {
-				proximityResult[currentProx>>1] = proximityValue[currentProx-1] - proximityValue[currentProx] - proximityOffset[currentProx>>1];	// ambient - (ambient+reflected) - offset
+				//if(currentProx < 16) {	// prox
+					proximityResult[currentProx>>1] = proximityValue[currentProx-1] - proximityValue[currentProx] - proximityOffset[currentProx>>1];	// ambient - (ambient+reflected) - offset
+				//} else {	// ground
+				//	proximityResult[currentProx>>1] = proximityValue[currentProx-1] - proximityValue[currentProx];
+				//}
 				if(proximityResult[currentProx>>1] < 0) {
 					proximityResult[currentProx>>1] = 0;
 				}
@@ -111,6 +129,7 @@ ISR(ADC_vect) {
 				// (apart from black ones) after calibration.
 				if(cliffAvoidanceEnabled) {
 					if(proximityResult[8]<CLIFF_THR || proximityResult[9]<CLIFF_THR || proximityResult[10]<CLIFF_THR || proximityResult[11]<CLIFF_THR) {
+					//if(proximityResult[8]<(proximityOffset[8]>>1) || proximityResult[9]<(proximityOffset[9]>>1) || proximityResult[10]<(proximityOffset[10]>>1) || proximityResult[11]<(proximityOffset[11]>>1)) {
 						cliffDetectedFlag = 1;
 						//LED_RED_ON;			
 						// set resulting velocity to 0 and change the pwm registers directly to be able
@@ -131,8 +150,7 @@ ISR(ADC_vect) {
 					cliffDetectedFlag = 0;
 				}
 
-			}
-
+			}			
 			currentProx++;
 			if(currentProx > 23) {						// in total there are 8 proximity sensors and 4 ground sensors => 12 sensors
 				currentProx = 0;						// for each one there is a passive phase in which the ambient light is sampled,
@@ -156,7 +174,9 @@ ISR(ADC_vect) {
 				}
 				firstSampleRight++;
 				if(firstSampleRight > 4) {				// to skip undesired samples (3 samples skipped) in which there could be glitches
-					right_vel_sum += value;
+					if(pwm_right != 0) {
+						right_vel_sum += value;
+					}
 					if(firstSampleRight==8) {			// number of samples to take for the speed computation (average of 4 samples)
 						firstSampleRight = 0;
 						compute_right_vel = 1;
@@ -178,7 +198,9 @@ ISR(ADC_vect) {
 				}
 				firstSampleLeft++;
 				if(firstSampleLeft > 4) {
-					left_vel_sum += value;
+					if(pwm_left != 0) {
+						left_vel_sum += value;
+					}
 					if(firstSampleLeft==8) {
 						firstSampleLeft = 0;
 						compute_left_vel = 1;
@@ -193,93 +215,430 @@ ISR(ADC_vect) {
 	}			
 
 	// select next channel to sample based on the previous sequence and actual motors pwm phase
-	switch(adcSamplingState) {
-
-		case 0:	// proximity
-			currentAdChannel = currentProx>>1;				// select the channel to sample after next interrupt (in which the adc register is updated with the new channel)
-															// currentProx goes from 0 to 23, currentAdChannel from 0 to 11
-			if(rightChannelPhase == ACTIVE_PHASE) {			// select where to save the data that we're sampling
-				adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_CURRENT;
-			} else if(rightChannelPhase == PASSIVE_PHASE) {
-				adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_VEL;
-			} else {
-				adcSaveDataTo = SKIP_SAMPLE;
-			}
-			adcSamplingState = 1;
-			break;
-
-		case 1:	// left motor
-			currentAdChannel = currentMotLeftChannel;
-			leftChannelPhase = leftMotorPhase;
-			adcSaveDataTo = SAVE_TO_PROX;
-			adcSamplingState = 2;
-			break;
-
-		case 2:	// right motor
-			currentAdChannel = currentMotRightChannel;
-			rightChannelPhase = rightMotorPhase;
-			if(leftChannelPhase == ACTIVE_PHASE) {
-				adcSaveDataTo = SAVE_TO_LEFT_MOTOR_CURRENT;
-			} else if(leftChannelPhase == PASSIVE_PHASE) {
-				adcSaveDataTo = SAVE_TO_LEFT_MOTOR_VEL;
-			} else {
-				adcSaveDataTo = SKIP_SAMPLE;
-			}
-			adcSamplingState = 3;
-			break;
-
-		case 3:	// left motor
-			currentAdChannel = currentMotLeftChannel;
-			leftChannelPhase = leftMotorPhase;
-			if(rightChannelPhase == ACTIVE_PHASE) {
-				adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_CURRENT;
-			} else if(rightChannelPhase == PASSIVE_PHASE) {
-				adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_VEL;
-			} else {
-				adcSaveDataTo = SKIP_SAMPLE;
-			}
-			adcSamplingState = 4;
-			break;
-
-		case 4:	// right motor
-			currentAdChannel = currentMotRightChannel;
-			rightChannelPhase = rightMotorPhase;
-			if(leftChannelPhase == ACTIVE_PHASE) {
-				adcSaveDataTo = SAVE_TO_LEFT_MOTOR_CURRENT;
-			} else if(leftChannelPhase == PASSIVE_PHASE) {
-				adcSaveDataTo = SAVE_TO_LEFT_MOTOR_VEL;
-			} else {
-				adcSaveDataTo = SKIP_SAMPLE;
-			}
-			adcSamplingState = 0;
-
-			if(currentProx==14 && measBattery==1) {
-				measBattery=2;
-				SENS_ENABLE_ON;			// next time measure battery instead of proximity 7
-			}
-
-			// turn on the IR pulses for the proximities only in their active phases
-			if(currentProx & 0x01) {
-				if(currentProx < 16) {	// pulse for proximity and ground sensors are placed in different ports;
-										// PORTA for proximity sensors, PORTJ for ground sensors
-					PORTA = (1 << (currentProx>>1));	// pulse on
-				} else {
-					if(hardwareRevision == HW_REV_3_0) {
-						PORTJ = (1 << ((currentProx-16)>>1));	// pulse on
-					}
-
-					if(hardwareRevision == HW_REV_3_0_1) {
-						PORTJ &= ~(1 << ((currentProx-16)>>1));	// pulse on (inverse logic)
-					}
-
-					if(hardwareRevision == HW_REV_3_1) {
-						PORTJ &= ~(1 << ((currentProx-16)>>1));	// pulse on (inverse logic)
-					}
-
+	if(irCommMode == IRCOMM_MODE_TRANSMIT) {
+		switch(irCommAdcTxState) {
+			case IRCOMM_TX_ADC_TURN_OFF_SENSORS:
+				// turn off all proximity
+				if(hardwareRevision == HW_REV_3_0) {
+					PORTJ &= 0xF0;	// ground
+					PORTA = 0x00;	// proximity
 				}
-			}
-			break;
 
+				if(hardwareRevision == HW_REV_3_0_1) {
+					PORTJ = 0xFF;	// ground
+					PORTA = 0x00;	// proximity
+				}
+
+				if(hardwareRevision == HW_REV_3_1) {
+					PORTJ = 0xFF;	// ground
+					PORTA = 0x00;	// proximtiy
+				}
+				currentAdChannel = currentMotLeftChannel;
+				leftChannelPhase = leftMotorPhase;
+				adcSaveDataTo = SKIP_SAMPLE;				
+				irCommState = IRCOMM_TX_PREPARE_TRANSMISSION;
+				irCommAdcTxState = IRCOMM_TX_ADC_WAIT_PREPARATION;
+				if(irCommTxSensorGroup==0) {
+					irCommTxSensorGroup = 1;
+				} else {
+					irCommTxSensorGroup = 0;
+				}
+				break;
+
+			case IRCOMM_TX_ADC_WAIT_PREPARATION:
+				break;
+
+			case IRCOMM_TX_ADC_TRANSMISSION_SEQ1:
+				irCommTxDurationCycle++;
+				if(irCommTxDurationCycle == irCommTxDuration) {
+					irCommTxDurationCycle = 0;
+					if(irCommTxPulseState == 0) {
+						irCommTxPulseState = 1;
+						//PORTA = 0xFF;
+						//PORTA = 0x01;
+						//PORTA = irCommTxSensorMask;
+						if(irCommTxSensorGroup==0) {
+							PORTA = 0xAA;
+						} else {
+							PORTA = 0x55;
+						}
+					} else {
+						irCommTxPulseState = 0;
+						PORTA = 0x00;
+					}
+					irCommTxSwitchCounter++;
+					if(irCommTxSwitchCounter == irCommTxSwitchCount) {
+						irCommTxBitCount++;
+						if(irCommTxBitCount==12) {
+							irCommState = IRCOMM_TX_IDLE_STATE;
+							irCommTxByteEnqueued = 0;
+							adcSamplingState = 0;
+							irCommMode=IRCOMM_MODE_SENSORS_SAMPLING;
+							irCommInitReceiver();
+							PORTA = 0x00;
+							irCommTxLastTransmissionTime = getTime100MicroSec();
+						} else {
+							irCommState = IRCOMM_TX_COMPUTE_TIMINGS;
+						}
+						irCommAdcTxState = IRCOMM_TX_ADC_WAIT_PREPARATION;						
+						adcSaveDataTo = SKIP_SAMPLE;
+						break;
+					}
+				}	
+				currentAdChannel = currentMotRightChannel;
+				rightChannelPhase = rightMotorPhase;
+				if(leftChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_CURRENT;
+				} else if(leftChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				irCommAdcTxState = IRCOMM_TX_ADC_TRANSMISSION_SEQ2;
+				break;
+
+			case IRCOMM_TX_ADC_TRANSMISSION_SEQ2:
+				irCommTxDurationCycle++;
+				if(irCommTxDurationCycle == irCommTxDuration) {
+					irCommTxDurationCycle = 0;
+					if(irCommTxPulseState == 0) {
+						irCommTxPulseState = 1;
+						//PORTA = 0xFF;
+						//PORTA = 0x01;
+						//PORTA = irCommTxSensorMask;
+						if(irCommTxSensorGroup==0) {
+							PORTA = 0xAA;
+						} else {
+							PORTA = 0x55;
+						}
+					} else {
+						irCommTxPulseState = 0;
+						PORTA = 0x00;
+					}
+					irCommTxSwitchCounter++;
+					if(irCommTxSwitchCounter == irCommTxSwitchCount) {
+						irCommTxBitCount++;
+						if(irCommTxBitCount==12) {
+							irCommState = IRCOMM_TX_IDLE_STATE;
+							irCommTxByteEnqueued = 0;
+							adcSamplingState = 0;
+							irCommMode=IRCOMM_MODE_SENSORS_SAMPLING;
+							irCommInitReceiver();
+							PORTA = 0x00;
+							irCommTxLastTransmissionTime = getTime100MicroSec();
+						} else {
+							irCommState = IRCOMM_TX_COMPUTE_TIMINGS;
+						}
+						irCommAdcTxState = IRCOMM_TX_ADC_WAIT_PREPARATION;
+						adcSaveDataTo = SKIP_SAMPLE;
+						break;
+					}
+				}
+				currentAdChannel = currentMotLeftChannel;
+				leftChannelPhase = leftMotorPhase;
+				if(rightChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_CURRENT;
+				} else if(rightChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				irCommAdcTxState = IRCOMM_TX_ADC_TRANSMISSION_SEQ1;
+				break;
+
+			case IRCOMM_TX_ADC_IDLE:
+				if(irCommTxByteEnqueued==1) {					
+					irCommAdcTxState = IRCOMM_TX_ADC_TURN_OFF_SENSORS;
+				}
+				break;
+
+		}
+	} else if(irCommMode == IRCOMM_MODE_RECEIVE) {
+		switch(irCommAdcRxState) {
+			case 0:				
+				currentProx = 0;
+				currentAdChannel = currentProx+1;				
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 1;
+				break;
+
+			case 1:
+				currentAdChannel = currentProx+1;
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 2;
+				break;
+
+			case 2:
+				currentAdChannel = currentProx+1;
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 3;
+				break;
+
+			case 3:
+				currentAdChannel = currentProx+1;
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 4;
+				break;
+
+			case 4:
+				currentAdChannel = currentProx+1;
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 5;
+				break;
+
+			case 5:
+				currentAdChannel = currentProx+1;
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 6;
+				break;
+
+			case 6:
+				currentAdChannel = currentProx+1;
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 7;
+				break;
+
+			case 7:
+				currentAdChannel = currentMotLeftChannel;
+				leftChannelPhase = leftMotorPhase;
+				adcSaveDataTo = SAVE_TO_PROX_IRCOMM;
+				irCommAdcRxState = 8;
+				break;
+
+			case 8:
+				currentAdChannel = currentMotRightChannel;
+				rightChannelPhase = rightMotorPhase;
+				if(leftChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_CURRENT;
+				} else if(leftChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				irCommAdcRxState = 9;
+				break;
+
+			case 9:
+				currentAdChannel = currentMotLeftChannel;
+				leftChannelPhase = leftMotorPhase;
+				if(rightChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_CURRENT;
+				} else if(rightChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				irCommAdcRxState = 10;
+				break;
+
+			case 10:
+				currentAdChannel = currentMotRightChannel;
+				rightChannelPhase = rightMotorPhase;
+				if(leftChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_CURRENT;
+				} else if(leftChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}				
+				// after having skipped the second start bit, skip some samples in order to synchronize with the 
+				// receiving signal
+				/*
+				if((irCommState==IRCOMM_RX_SYNC_SIGNAL) && (irCommSecondBitSkipped==1)) {
+					irCommRxWindowSamples = 0;
+					irCommShiftCounter++;
+					if(irCommShiftCounter >= irCommShiftCount) {
+						irCommSecondBitSkipped = 0;
+						irCommState = IRCOMM_RX_WAITING_BIT;
+					}
+				} else {
+					irCommRxWindowSamples++;
+				}
+				*/
+				/*
+				if((irCommState>=IRCOMM_RX_MAX_SENSOR_STATE) && (irCommState<=IRCOMM_RX_SYNC_SIGNAL)) {
+					irCommRxWindowSamples = 0;
+					irCommRxBitSkipped++;
+					if(irCommState==IRCOMM_RX_SYNC_SIGNAL) {
+						if(irCommRxBitSkipped >= irCommShiftCount) {
+							irCommState = IRCOMM_RX_WAITING_BIT;
+						}
+					}
+				} else {
+					irCommRxWindowSamples++;
+				}
+				*/
+				if(irCommRxBitSkipped < 254) {	// safety check
+					irCommRxBitSkipped++;
+				}
+				irCommRxWindowSamples++;
+				if(irCommState==IRCOMM_RX_SYNC_SIGNAL) {
+					irCommRxWindowSamples = 0;
+					if(irCommRxBitSkipped >= irCommShiftCount) {
+						irCommState = IRCOMM_RX_WAITING_BIT;
+					}
+				}
+
+				if(irCommRxWindowSamples == IRCOMM_SAMPLING_WINDOW) {					
+					irCommRxWindowSamples = 0;
+					irCommTempPointer = irCommProxValuesCurr;
+					irCommProxValuesCurr = irCommProxValuesAdc;
+					irCommProxValuesAdc = irCommTempPointer;
+					irCommTempPointer = irCommMaxSensorValueCurr;
+					irCommMaxSensorValueCurr = irCommMaxSensorValueAdc;
+					irCommMaxSensorValueAdc = irCommTempPointer;
+					irCommTempPointer = irCommMinSensorValueCurr;
+					irCommMinSensorValueCurr = irCommMinSensorValueAdc;
+					irCommMinSensorValueAdc = irCommTempPointer;
+					memset(irCommMaxSensorValueAdc, 0x00, 16);
+					memset(irCommMinSensorValueAdc, 0xFF, 16);
+					if(irCommState == IRCOMM_RX_IDLE_STATE) {
+						irCommState = IRCOMM_RX_MAX_SENSOR_STATE;
+						irCommRxBitSkipped = 0;
+					}
+					//if(irCommState == IRCOMM_RX_SYNC_SIGNAL) {
+					//	irCommSecondBitSkipped = 1;	// the second start bit is just sampled, skip it and sync with the received signal						
+					//}
+					if(irCommState == IRCOMM_RX_WAITING_BIT) {
+						irCommState = IRCOMM_RX_READ_BIT;
+					}
+				}
+				/*
+				if(irCommTickCounter==0) {
+					irCommTickCounter = 1;
+					updateBlueLed(255);
+				} else {
+					irCommTickCounter = 0;
+					updateBlueLed(0);
+				}
+				*/
+				irCommAdcRxState = 11;
+				break;
+
+			case 11:
+				currentAdChannel = 0;	// prox0
+				if(rightChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_CURRENT;
+				} else if(rightChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				irCommAdcRxState = 0;
+				break;
+
+			case 12:
+				adcSaveDataTo = SKIP_SAMPLE;
+				break;
+
+		}
+	} else if(irCommMode==IRCOMM_MODE_SENSORS_SAMPLING) {
+		switch(adcSamplingState) {
+
+			case 0:	// proximity
+				currentAdChannel = currentProx>>1;				// select the channel to sample after next interrupt (in which the adc register is updated with the new channel)
+																// currentProx goes from 0 to 23, currentAdChannel from 0 to 11
+				if(rightChannelPhase == ACTIVE_PHASE) {			// select where to save the data that we're sampling
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_CURRENT;
+				} else if(rightChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				adcSamplingState = 1;
+				break;
+
+			case 1:	// left motor
+				currentAdChannel = currentMotLeftChannel;
+				leftChannelPhase = leftMotorPhase;
+				adcSaveDataTo = SAVE_TO_PROX;
+				adcSamplingState = 2;
+				if(irCommEnabled==IRCOMM_MODE_RECEIVE && currentProx==23) {					
+					currentAdChannel = 0;	// prox0					
+					measBattery = 0;
+					irCommAdcRxState = 0;					
+					irCommRxWindowSamples = 0;
+					memset(irCommMaxSensorValueAdc, 0x00, 16);
+					memset(irCommMinSensorValueAdc, 0xFF, 16);
+					irCommMode = IRCOMM_MODE_RECEIVE;					
+				}
+				if(irCommEnabled==IRCOMM_MODE_TRANSMIT && currentProx==23) {
+					irCommMode = IRCOMM_MODE_TRANSMIT;
+					if(irCommTxByteEnqueued==1) {
+						irCommAdcTxState = IRCOMM_TX_ADC_TURN_OFF_SENSORS;
+					} else {
+						irCommMode=IRCOMM_MODE_SENSORS_SAMPLING; // no data to be transmitted, restart sensors sampling
+					}
+				}
+				break;
+
+			case 2:	// right motor
+				currentAdChannel = currentMotRightChannel;
+				rightChannelPhase = rightMotorPhase;
+				if(leftChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_CURRENT;
+				} else if(leftChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				adcSamplingState = 3;
+				break;
+
+			case 3:	// left motor
+				currentAdChannel = currentMotLeftChannel;
+				leftChannelPhase = leftMotorPhase;
+				if(rightChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_CURRENT;
+				} else if(rightChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_RIGHT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				adcSamplingState = 4;
+				break;
+
+			case 4:	// right motor
+				currentAdChannel = currentMotRightChannel;
+				rightChannelPhase = rightMotorPhase;
+				if(leftChannelPhase == ACTIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_CURRENT;
+				} else if(leftChannelPhase == PASSIVE_PHASE) {
+					adcSaveDataTo = SAVE_TO_LEFT_MOTOR_VEL;
+				} else {
+					adcSaveDataTo = SKIP_SAMPLE;
+				}
+				adcSamplingState = 0;
+
+				if(currentProx==14 && measBattery==1) {
+					measBattery=2;
+					SENS_ENABLE_ON;			// next time measure battery instead of proximity 7
+				}
+
+				// turn on the IR pulses for the proximities only in their active phases
+				if(currentProx & 0x01) {
+					if(currentProx < 16) {	// pulse for proximity and ground sensors are placed in different ports;
+											// PORTA for proximity sensors, PORTJ for ground sensors
+						PORTA = (1 << (currentProx>>1));	// pulse on
+					} else {
+						if(hardwareRevision == HW_REV_3_0) {
+							PORTJ = (1 << ((currentProx-16)>>1));	// pulse on
+						}
+
+						if(hardwareRevision == HW_REV_3_0_1) {
+							PORTJ &= ~(1 << ((currentProx-16)>>1));	// pulse on (inverse logic)
+						}
+
+						if(hardwareRevision == HW_REV_3_1) {
+							PORTJ &= ~(1 << ((currentProx-16)>>1));	// pulse on (inverse logic)
+						}
+
+					}
+				}
+				break;
+
+		}
+	
 	}
 
 	// channel selection in the adc register; continuously manually change the channel 
@@ -293,7 +652,7 @@ ISR(ADC_vect) {
 	}
 
 	// turn off the proximity IR pulses in order to have 200 us of pulse
-	if(adcSamplingState == 2) {
+	if((adcSamplingState==2) && (irCommMode==IRCOMM_MODE_SENSORS_SAMPLING)) {
 
 		if(hardwareRevision == HW_REV_3_0) {
 			PORTJ &= 0xF0;

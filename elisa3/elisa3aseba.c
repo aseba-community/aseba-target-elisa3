@@ -28,7 +28,6 @@
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 #include <util/atomic.h>
-#include "variables.h"
 #include "utility.h"
 
 #include <string.h>
@@ -38,19 +37,24 @@
 #include <common/consts.h>
 #include <vm/natives.h>
 #include <transport/buffer/vm-buffer.h>
+#include "elisa_natives.h"
+#include "variables.h"
 
 #define vmVariablesSize (sizeof(struct EPuckVariables) / sizeof(sint16))
 #define vmStackSize 32
 #define argsSize 32
 
-// we receive the data as big endian and read them as little, so we have to acces the bit the right way
-#define CAM_RED(pixel) ( 3 * (((pixel) >> 3) & 0x1f))
-
-#define CAM_GREEN(pixel) ((3 * ((((pixel) & 0x7) << 3) | ((pixel) >> 13))) >> 1)
-
-#define CAM_BLUE(pixel) ( 3 * (((pixel) >> 8) & 0x1f))
-
 #define CLAMP(v, vmin, vmax) ((v) < (vmin) ? (vmin) : (v) > (vmax) ? (vmax) : (v))
+
+#define LEFT 0
+#define RIGHT 1
+
+/*
+History:
+0: First production firmware
+*/
+#define FW_VERSION 0
+
 
 // data
 
@@ -78,17 +82,23 @@ struct Elisa3Variables
 	sint16 source;
 	// args
 	sint16 args[argsSize];
+	// fwversion
+	sint16 fwversion;
+	
 	// ACTUATORS
-	// motor
-	sint16 leftSpeed;
-	sint16 rightSpeed;
+	// motors (range is -127..127, resolution is 5 mm/s)
+	sint16 targetSpeed[2];
+	sint16 measSpeed[2];
 	// green leds
 	sint16 greenLeds[8];
 	// rgb leds
 	sint16 rgbLeds[3];	//0=red, 1=green, 2=blue
 	// IR transmitters
-	sint16 irFront;
-	sint16 irBack;
+	sint16 irTxFront;
+	sint16 irTxBack;
+	// button
+	sint16 button;
+	
 	// SENSORS
 	// prox
 	sint16 prox[8];
@@ -101,9 +111,30 @@ struct Elisa3Variables
 	// selector
 	sint16 selector;
 	// tv remote
-	sint16 irCmd ;
-	// free space
-	sint16 freeSpace[128];
+	sint16 tvRemote;
+	// battery (adc, percentage)
+	sint16 batteryAdc;
+	sint16 batteryPercent;
+	
+	// local communication
+	sint16 irRxData;
+	sint16 irTxData;
+
+//	// Charge state (0 => robot not in charge; 1 => robot in charge).
+//	// Only meaningful if radio communication is used (when cable attached the state is always in charge).
+//	sint16 chargeState;
+
+	// Odometry.
+	sint16 thetaDeg;
+	sint16 xPosMm;
+	sint16 yPosMm;
+
+	// timer
+	sint16 timer;
+	
+	// Free space, reserved for user variables in the script.
+	sint16 freeSpace[100];
+	
 } elisa3Variables;
 
 char name[] = "elisa3-0";
@@ -114,19 +145,32 @@ AsebaVMDescription vmDescription = {
 		{ 1, "id" },			// Do not touch it
 		{ 1, "source" }, 		// nor this one
 		{ argsSize, "args" },	// neither this one
-		{1, "leftSpeed"},
-		{1, "rightSpeed"},
-		{8, "greenLeds"},
-		{3, "rgbLeds"},
-		{1, "irFront"},
-		{1, "irBack"},
+		{1, "_fwver"},
+		{1, "motor.left.target"},
+		{1, "motor.right.target"},
+		{1, "motor.left.speed"},
+		{1, "motor.right.speed"},
+		{8, "led.green"},
+		{3, "led.rgb"},
+		{1, "ir.tx.front"},
+		{1, "ir.tx.back"},
+		{1, "button"},
 	    {8, "prox"},
-		{8, "proxAmbient"},
+		{8, "prox.ambient"},
 		{4, "ground"},
-		{4, "groundAmbient"},
+		{4, "ground.ambient"},
 		{3, "acc"},
 		{1, "selector"},
-		{1, "irCmd"},
+		{1, "rc5"},
+		{1, "_bat.adc"},
+		{1, "bat.percent"},
+		{1, "prox.comm.rx"},
+		{1, "prox.comm.tx"},
+		{1, "odom.theta"},
+		{1, "odom.x"},
+		{1, "odom.y"},
+//		{1, "charge"},
+		{1, "timer.period"},
 		{ 0, NULL }				// null terminated
 	}
 };
@@ -153,20 +197,29 @@ const AsebaVMDescription* AsebaGetVMDescription(AsebaVMState *vm)
 	return &vmDescription;
 }	
 
-
-
-
 static unsigned int events_flags = 0;
 enum Events
 {
 	EVENT_IR_SENSORS = 0,
-	EVENT_ACCELEROMETER,
+	EVENT_ACC,
+	EVENT_BUTTON,
+	EVENT_DATA,
+	EVENT_RC5,
+	EVENT_SELECTOR,
+	EVENT_TIMER,
+//	EVENT_CHARGE,
 	EVENTS_COUNT
 };
 
 static const AsebaLocalEventDescription localEvents[] = { 
-	{"ir_sensors", "New IR (prox and ground) sensors values available"},
-	{"accelerometer", "New accelerometer values available"},
+	{"ir.sensors", "Proximity and ground sensors updated"},
+	{"acc", "Accelerometer values updated"},
+	{"button", "Button status changed"},
+	{"prox.comm", "Data received on local communication"},
+	{"rc5", "RC5 message received"},
+	{"sel", "Selector status changed"},
+//	{"charge", "Charge status changed"},
+	{"timer", "Timer"},
 	{ NULL, NULL }
 };
 
@@ -178,11 +231,13 @@ const AsebaLocalEventDescription * AsebaGetLocalEventsDescriptions(AsebaVMState 
 
 static const AsebaNativeFunctionDescription* nativeFunctionsDescription[] = {
 	ASEBA_NATIVES_STD_DESCRIPTIONS,
+	ELISA_NATIVES_DESCRIPTIONS,
 	0	// null terminated
 };
 
 static AsebaNativeFunctionPointer nativeFunctions[] = {
 	ASEBA_NATIVES_STD_FUNCTIONS,
+	ELISA_NATIVES_FUNCTIONS
 };
 
 void AsebaPutVmToSleep(AsebaVMState *vm)
@@ -305,18 +360,25 @@ void updateRobotVariables() {
 
 	unsigned i;
 	static int accState = 1;
+	static uint32_t batteryTick = 0;
+	static char btnState = -1;
+	static char selectorState = -1;
+//	static char chargeState = -1;
+	static uint32_t timerTick = 0;
 
 	// motor
 	static int leftSpeed = 0, rightSpeed = 0;
 
-	if (elisa3Variables.leftSpeed != leftSpeed) {
-		leftSpeed = CLAMP(elisa3Variables.leftSpeed, -100, 100);
+	if (elisa3Variables.targetSpeed[LEFT] != leftSpeed) {
+		leftSpeed = CLAMP(elisa3Variables.targetSpeed[LEFT], -127, 127);
 		setLeftSpeed(leftSpeed);
 	}
-	if (elisa3Variables.rightSpeed != rightSpeed) {
-		rightSpeed = CLAMP(elisa3Variables.rightSpeed, -100, 100);
+	if (elisa3Variables.targetSpeed[RIGHT] != rightSpeed) {
+		rightSpeed = CLAMP(elisa3Variables.targetSpeed[RIGHT], -127, 127);
 		setRightSpeed(rightSpeed);
 	}
+	elisa3Variables.measSpeed[LEFT] = speedLeftFromEnc/5;	// Divide by 5 to get the same scale as target speed (1 unit = 5 mm/s).
+	elisa3Variables.measSpeed[RIGHT] = speedRightFromEnc/5;
 	handleMotorsWithSpeedController();
 
 	if(proxUpdated) {
@@ -344,34 +406,85 @@ void updateRobotVariables() {
 		elisa3Variables.acc[0] = accX;
 		elisa3Variables.acc[1] = accY;
 		elisa3Variables.acc[2] = accZ;
-		SET_EVENT(EVENT_ACCELEROMETER);
+		SET_EVENT(EVENT_ACC);
+		computeAngle();
+		elisa3Variables.thetaDeg = (signed int)(theta*RAD_2_DEG);
+		elisa3Variables.xPosMm = (signed int)xPos;
+		elisa3Variables.yPosMm = (signed int)yPos;
 	}
 	accState = 1 - accState;
 
 	// rgb leds
-	updateRedLed(CLAMP(elisa3Variables.rgbLeds[0], 0, 255));
-	updateGreenLed(CLAMP(elisa3Variables.rgbLeds[1], 0, 255));
-	updateBlueLed(CLAMP(elisa3Variables.rgbLeds[2], 0, 255));
+	updateRedLed(255-CLAMP(elisa3Variables.rgbLeds[0], 0, 255));
+	updateGreenLed(255-CLAMP(elisa3Variables.rgbLeds[1], 0, 255));
+	updateBlueLed(255-CLAMP(elisa3Variables.rgbLeds[2], 0, 255));
 
 	// selector
 	elisa3Variables.selector = getSelector();
+	if(selectorState != elisa3Variables.selector) {
+		SET_EVENT(EVENT_SELECTOR);
+	}
+	selectorState = elisa3Variables.selector;
 
 	// ir transmitters
-	if(elisa3Variables.irFront) {
+	if(elisa3Variables.irTxFront) {
 		LED_IR2_LOW;
 	} else {
 		LED_IR2_HIGH;
 	}
-	if(elisa3Variables.irBack) {
+	if(elisa3Variables.irTxBack) {
 		LED_IR1_LOW;
 	} else {
 		LED_IR1_HIGH;
 	}
 
 	if(command_received) {
-		elisa3Variables.irCmd = ir_remote_get_data();
+		elisa3Variables.tvRemote = ir_remote_get_data();
 		command_received = 0;
+		SET_EVENT(EVENT_RC5);
 	}
+	
+	elisa3Variables.button = BUTTON0;
+	if(btnState != elisa3Variables.button) {
+		SET_EVENT(EVENT_BUTTON);
+	}
+	btnState = elisa3Variables.button;
+	
+	if((getTime100MicroSec()-batteryTick) >= (PAUSE_2_SEC)) {
+		readBatteryLevel();				// The battery level is updated every two seconds.
+		elisa3Variables.batteryAdc = batteryLevel;
+		if(batteryLevel >= 934) {           // 934 is the measured adc value when the battery is charged.
+			elisa3Variables.batteryPercent = 100;
+		} else if(batteryLevel <= 780) {    // 780 is the measrued adc value when the battery is discharged.
+			elisa3Variables.batteryPercent = 0;
+		} else {
+			elisa3Variables.batteryPercent = (unsigned int)(((sint32)batteryLevel-(sint32)780.0)*(sint32)100/(sint32)154);
+		}
+		batteryTick = getTime100MicroSec();
+	}
+	
+	if(irCommEnabled != IRCOMM_MODE_SENSORS_SAMPLING) {
+		irCommTasks();
+		if(irCommDataSent()==1) {
+			irCommSendData((unsigned char)elisa3Variables.irTxData);
+		}
+		if(irCommDataAvailable()==1) {
+			elisa3Variables.irRxData = irCommReadData();
+			SET_EVENT(EVENT_DATA);
+		}
+	}
+
+	if(elisa3Variables.timer > 0) {
+		if(((getTime100MicroSec()-timerTick)/10) >= elisa3Variables.timer) {	// This is divided by 10 to get about 1 ms.
+			SET_EVENT(EVENT_TIMER);
+			timerTick = getTime100MicroSec();
+		}
+	}
+
+// 	elisa3Variables.chargeState = CHARGE_ON;
+// 	if(chargeState != elisa3Variables.chargeState) {
+// 		SET_EVENT(EVENT_CHARGE);
+// 	}
 
 }
 
@@ -387,42 +500,7 @@ void AsebaAssert(AsebaVMState *vm, AsebaAssertReason reason)
 }
 
 void initRobot() {
-
-	// init stuff
-	cli();			// disable global interrupts (by default it should already be disabled)
-	
-	// reset all registers touched by arduino in the "init()" functions (wiring.c) not used by the robot
-	TCCR0A = 0;
-	TCCR0B = 0;
-	TIMSK0 = 0;
-	TCCR5A = 0;
-	TCCR5B = 0;
-
-	rfAddress = eeprom_read_word((uint16_t*)4094);
-
-	// some code parts change based on hardware revision
-	if(rfAddress >= 3201 && rfAddress <= 3203) {
-		hardwareRevision = HW_REV_3_0;
-	}
-
-	if(rfAddress == 3200) {
-		hardwareRevision = HW_REV_3_0_1;
-	}
-
-	if(rfAddress > 3203) {
-		hardwareRevision = HW_REV_3_1;
-	}
-
-	initPortsIO();
-	initAdc();
-	initMotors();
-	initRGBleds();
-	initUsart0();
-	initAccelerometer();
-	init_ir_remote_control();
-
-	sei();			// enable global interrupts
-
+	initPeripherals();
 }
 
 
@@ -458,12 +536,12 @@ void initAseba() {
 	vmState.nodeId = selector + 1;
 	AsebaVMInit(&vmState);
 	elisa3Variables.id = selector + 1;
-	elisa3Variables.rgbLeds[0] = 255;
-	elisa3Variables.rgbLeds[1] = 255;
-	elisa3Variables.rgbLeds[2] = 255;
+	elisa3Variables.rgbLeds[0] = 0;
+	elisa3Variables.rgbLeds[1] = 0;
+	elisa3Variables.rgbLeds[2] = 0;
 	name[7] = '0' + selector;
 	turnOffGreenLeds();
-
+	elisa3Variables.fwversion = FW_VERSION;
 }
 
 int main()

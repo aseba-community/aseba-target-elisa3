@@ -16,25 +16,124 @@ void calibrateSensors() {
 	calibrationCycle = 0;
 	startCalibration = 1;
 
-	while(startCalibration) {
 
-		readAccelXYZ();
+	// calibrate accelerometer
+
+	lastTick = getTime100MicroSec();
+	while((getTime100MicroSec() - lastTick) < PAUSE_100_MSEC) {
+		readAccelXYZ();	// get a fresh value from the accelerometer
+	}
+	
+	accXMax = -1023;
+	accXMin = 1023;
+	accYMax = -1023;
+	accYMin = 1023;
+	accOffsetXSum = 0;
+	accOffsetYSum = 0;
+
+	if(abs(accZ) >= VERTICAL_THRESHOLD) {
+
+		pwm_red = 0;
+		pwm_green = 255;
+		pwm_blue = 255;
+		updateRedLed(pwm_red);
+		updateGreenLed(pwm_green);
+		updateBlueLed(pwm_blue);
+
+		setLeftSpeed(0);
+		setRightSpeed(0);
+
+		while(1) {
+
+			readAccelXYZ();
+
+			handleMotorsWithNoController();
+
+			if(calibrationCycle < CALIBRATION_CYCLES) {
+				accOffsetXSum += accX;
+				accOffsetYSum += accY;
+				calibrationCycle++;
+			} else {
+				accOffsetX = accOffsetXSum>>4;
+				accOffsetY = accOffsetYSum>>4;
+				break;
+			}
+
+		}
+
+	} else {
+
+		pwm_red = 255;
+		pwm_green = 0;
+		pwm_blue = 255;
+		updateRedLed(pwm_red);
+		updateGreenLed(pwm_green);
+		updateBlueLed(pwm_blue);
+
+		setLeftSpeed(-10);
+		setRightSpeed(10);
+
+		lastTick = getTime100MicroSec();
+
+		while(1) {
+
+			readAccelXYZ();
+
+			handleMotorsWithSpeedController();
+
+			if((getTime100MicroSec()-lastTick) < PAUSE_4_SEC) {
+				if(accXMax < accX) {
+					accXMax = accX;
+				}
+				if(accXMin > accX) {
+					accXMin = accX;
+				}
+				if(accYMax < accY) {
+					accYMax = accY;
+				}
+				if(accYMin > accY) {
+					accYMin = accY;
+				}
+				calibrationCycle++;
+			} else {
+				accOffsetX = (accXMax + accXMin)>>1;
+				accOffsetY = (accYMax + accYMin)>>1;
+				break;
+			}
+
+		}
+
+		setLeftSpeed(0);
+		setRightSpeed(0);
+
+	}	
+
+	startCalibration = 1;
+	calibrationCycle = 0;
+
+	// calibrate prox and ground sensors
+	while(startCalibration) {
 
 		if(calibrationCycle<=CALIBRATION_CYCLES) {
 
 			if(proxUpdated) {
 
+				pwm_red = 255;
+				pwm_green = 255;
+				pwm_blue = 0;
+				updateRedLed(pwm_red);
+				updateGreenLed(pwm_green);
+				updateBlueLed(pwm_blue);
+
 				proxUpdated = 0;
 
 				if(calibrationCycle==0) {		// reset all variables
+
 					for(i=0; i<12; i++) {
 						proximitySum[i] = 0;
 						proximityOffset[i] = 0;
-					}
-					accOffsetXSum = 0;
-					accOffsetYSum = 0;
-					accOffsetZSum = 0;
-
+					}				
+					
 					calibrationCycle++;
 
 					continue;					// the first time "proxUpdated" is set, all the proximity values saved in the array 
@@ -46,31 +145,33 @@ void calibrateSensors() {
 					proximitySum[i] += proximityResult[i];
 				}
 
-				accOffsetXSum += accX;
-				accOffsetYSum += accY;
-				accOffsetZSum += accZ;
-
 				calibrationCycle++;
 
 			}
 
-			continue;
+		} else {
 
-		} else if(calibrationCycle > CALIBRATION_CYCLES) {
+			pwm_red = 0;
+			pwm_green = 0;
+			pwm_blue = 255;
+			updateRedLed(pwm_red);
+			updateGreenLed(pwm_green);
+			updateBlueLed(pwm_blue);
 
 			for(i=0;i<12;i++) {
 				proximityOffset[i] = proximitySum[i]>>4;
 			}
 
 			for(i=8; i<12; i++) {
-				proximityOffset[i] -= 512;
+				proximityOffset[i] -= 512;	// move the "0" to 512 (values around 512)
 			}
 
-			accOffsetX = accOffsetXSum>>4;
-			accOffsetY = accOffsetYSum>>4;
-			accOffsetZ = accOffsetZSum>>4;
-
-			startCalibration = 0;
+			//proxUpdated = 0;
+			//if(proxUpdated) {	
+				startCalibration = 0;					
+			//} else { // wait for the sensors to be updated => it will block here...why??
+			//	continue;
+			//}
 
 		}
 
@@ -265,7 +366,7 @@ void readAccelXYZ() {
 		} else {													// else return the calibrated values
 			accX = (((signed int)buff[1]<<8)|buff[0])-accOffsetX;	// X axis
 			accY = (((signed int)buff[3]<<8)|buff[2])-accOffsetY;	// Y axis
-			accZ = (((signed int)buff[5]<<8)|buff[4])-accOffsetZ;	// Z axis
+			accZ = (((signed int)buff[5]<<8)|buff[4]);				// Z axis
 		}
 
 	} else if(useAccel == USE_ADXL345) {							
@@ -295,7 +396,7 @@ void readAccelXYZ() {
 		} else {													// else return the calibrated values
 			accX = (((signed int)buff[1]<<8)|buff[0])-accOffsetX;	// X axis
 			accY = (((signed int)buff[3]<<8)|buff[2])-accOffsetY;	// Y axis
-			accZ = (((signed int)buff[5]<<8)|buff[4])-accOffsetZ;	// Z axis
+			accZ = (((signed int)buff[5]<<8)|buff[4]);				// Z axis
 		}
 
 	} else {
@@ -379,7 +480,7 @@ void readAccelXYZ_2() {
 		} else {													// else return the calibrated values
 			accX = (((signed int)accBuff[1]<<8)|accBuff[0])-accOffsetX;	// X axis
 			accY = (((signed int)accBuff[3]<<8)|accBuff[2])-accOffsetY;	// Y axis
-			accZ = (((signed int)accBuff[5]<<8)|accBuff[4])-accOffsetZ;	// Z axis
+			accZ = (((signed int)accBuff[5]<<8)|accBuff[4]);			// Z axis
 		}
 
 	} else if(useAccel == USE_ADXL345) {							
@@ -397,7 +498,7 @@ void readAccelXYZ_2() {
 		} else {													// else return the calibrated values
 			accX = (((signed int)accBuff[1]<<8)|accBuff[0])-accOffsetX;	// X axis
 			accY = (((signed int)accBuff[3]<<8)|accBuff[2])-accOffsetY;	// Y axis
-			accZ = (((signed int)accBuff[5]<<8)|accBuff[4])-accOffsetZ;	// Z axis
+			accZ = (((signed int)accBuff[5]<<8)|accBuff[4]);			// Z axis
 		}
 
 	} else {
@@ -412,17 +513,13 @@ void readAccelXYZ_2() {
 
 void computeAngle() {
 
-	unsigned int abs_acc_z=abs(accZ);
-
 	// check the robot motion plane (horizontal or vertical) based on the Z axes;
-	// this check (threshold) works only if the accelerometer is calibrated
-	// leaving the robot flat on the ground
-	if(abs_acc_z <= VERTICAL_THRESHOLD) {
+	if(abs(accZ) >= VERTICAL_THRESHOLD) {
 		currPosition = HORIZONTAL_POS;
 	} else {
-		currPosition = VERTICAL_POS;
+		currPosition = VERTICAL_POS;	
 	}
-	if(prevPosition == currPosition) {			
+	if(currPosition != robotPosition) {			
 		timesInSamePos++;
 		if(timesInSamePos >= SAME_POS_NUM) {	// if the robot maintains its position for a while, then update the robot position;
 			timesInSamePos = 0;					// this check avoid to pass from one position to the other too fast when near the threshold
@@ -431,14 +528,27 @@ void computeAngle() {
 	} else {
 		timesInSamePos = 0;
 	}
-	prevPosition = currPosition;
 
 	// compute the angle using the X and Y axis
-	currentAngle = (signed int)(atan2((float)accX, (float)accY)*RAD_2_DEG);
+	thetaAcc = atan2((float)accX, (float)accY);
+	currentAngle = (signed int)(thetaAcc*RAD_2_DEG);
 
 	if(currentAngle < 0) {
 		currentAngle = currentAngle + (signed int)360;	// angles from 0 to 360
 	}
 
+}
+
+void readTemperature() {
+	if(useAccel == USE_MMAX7455L) {
+		// Always get zero as value!
+		i2c_start(accelAddress+I2C_WRITE);							// set device address and write mode
+		i2c_write(0x0B);											// sends address to read from (X LSB)
+		i2c_rep_start(accelAddress+I2C_READ);						// set device address and read mode
+		temperature = i2c_readNak();
+		i2c_stop();												// set stop conditon = release bus
+	} else {
+		temperature = 0;
+	}
 }
 

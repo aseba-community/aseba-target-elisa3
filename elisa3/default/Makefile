@@ -1,131 +1,269 @@
-###############################################################################
-# Makefile for the project elisa3-aseba
-###############################################################################
+################################################################################
+# Automatically-generated file. Do not edit!
+################################################################################
 
-## General Flags
-PROJECT = elisa3-aseba
-MCU = atmega2560
-TARGET = elisa3-aseba.elf
-CC = avr-gcc
+SHELL := cmd.exe
+RM := rm -rf
 
-CPP = avr-g++
+USER_OBJS :=
 
-## Options common to compile, link and assembly rules
-COMMON = -mmcu=$(MCU)
+LIBS := 
+PROJ := 
 
-## Compile options common for all C compilation units.
-CFLAGS = $(COMMON)
-CFLAGS += -Wall -gdwarf-2 -Os -std=gnu99 -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums
-CFLAGS += -MD -MP -MT $(*F).o -MF dep/$(@F).d 
+O_SRCS := 
+C_SRCS := 
+S_SRCS := 
+S_UPPER_SRCS := 
+OBJ_SRCS := 
+ASM_SRCS := 
+PREPROCESSING_SRCS := 
+OBJS := 
+OBJS_AS_ARGS := 
+C_DEPS := 
+C_DEPS_AS_ARGS := 
+EXECUTABLES := 
+OUTPUT_FILE_PATH :=
+OUTPUT_FILE_PATH_AS_ARGS :=
+AVR_APP_PATH :=$$$AVR_APP_PATH$$$
+QUOTE := "
+ADDITIONAL_DEPENDENCIES:=
+OUTPUT_FILE_DEP:=
+LIB_DEP:=
+LINKER_SCRIPT_DEP:=
 
-## Assembly specific flags
-ASMFLAGS = $(COMMON)
-ASMFLAGS += $(CFLAGS)
-ASMFLAGS += -x assembler-with-cpp -Wa,-gdwarf2
-
-## Linker flags
-LDFLAGS = $(COMMON)
-LDFLAGS +=  -Wl,-Map=elisa3-aseba.map
+# Every subdirectory with source files must be described here
+SUBDIRS := 
 
 
-## Intel Hex file production flags
-HEX_FLASH_FLAGS = -R .eeprom -R .fuse -R .lock -R .signature
+# Add inputs and outputs from these tool invocations to the build variables 
+C_SRCS +=  \
+../eepromIO.c \
+../elisa_natives.c \
+../irCommunication.c \
+../natives.c \
+../elisa3aseba.c \
+../leds.c \
+../motors.c \
+../ports_io.c \
+../usart.c \
+../variables.c \
+../behaviors.c \
+../speed_control.c \
+../adc.c \
+../sensors.c \
+../twimaster.c \
+../utility.c \
+../ir_remote_control.c \
+../mirf.c \
+../spi.c \
+../vm-buffer.c \
+../vm.c
 
-HEX_EEPROM_FLAGS = -j .eeprom
-HEX_EEPROM_FLAGS += --set-section-flags=.eeprom="alloc,load"
-HEX_EEPROM_FLAGS += --change-section-lma .eeprom=0 --no-change-warnings
+
+PREPROCESSING_SRCS += 
 
 
-## Include Directories
-INCLUDES = -I"G:\lavoro\aseba\aseba-dev\targets\elisa3-aseba\..\.." 
+ASM_SRCS += 
 
-## Objects that must be built in order to link
-OBJECTS = elisa3aseba.o leds.o motors.o ports_io.o usart.o variables.o behaviors.o speed_control.o adc.o sensors.o twimaster.o vm-buffer.o vm.o natives.o utility.o ir_remote_control.o mirf.o spi.o 
 
-## Objects explicitly added by the user
-LINKONLYOBJECTS = 
+OBJS +=  \
+eepromIO.o \
+elisa_natives.o \
+irCommunication.o \
+natives.o \
+elisa3aseba.o \
+leds.o \
+motors.o \
+ports_io.o \
+usart.o \
+variables.o \
+behaviors.o \
+speed_control.o \
+adc.o \
+sensors.o \
+twimaster.o \
+utility.o \
+ir_remote_control.o \
+mirf.o \
+spi.o \
+vm-buffer.o \
+vm.o
 
-## Build
-all: $(TARGET) elisa3-aseba.hex elisa3-aseba.eep elisa3-aseba.lss size
+OBJS_AS_ARGS +=  \
+eepromIO.o \
+elisa_natives.o \
+irCommunication.o \
+natives.o \
+elisa3aseba.o \
+leds.o \
+motors.o \
+ports_io.o \
+usart.o \
+variables.o \
+behaviors.o \
+speed_control.o \
+adc.o \
+sensors.o \
+twimaster.o \
+utility.o \
+ir_remote_control.o \
+mirf.o \
+spi.o \
+vm-buffer.o \
+vm.o
 
-## Compile
-elisa3aseba.o: ../elisa3aseba.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+C_DEPS +=  \
+eepromIO.d \
+elisa_natives.d \
+irCommunication.d \
+natives.d \
+elisa3aseba.d \
+leds.d \
+motors.d \
+ports_io.d \
+usart.d \
+variables.d \
+behaviors.d \
+speed_control.d \
+adc.d \
+sensors.d \
+twimaster.d \
+utility.d \
+ir_remote_control.d \
+mirf.d \
+spi.d \
+vm-buffer.d \
+vm.d
 
-leds.o: ../leds.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+C_DEPS_AS_ARGS +=  \
+eepromIO.d \
+elisa_natives.d \
+irCommunication.d \
+natives.d \
+elisa3aseba.d \
+leds.d \
+motors.d \
+ports_io.d \
+usart.d \
+variables.d \
+behaviors.d \
+speed_control.d \
+adc.d \
+sensors.d \
+twimaster.d \
+utility.d \
+ir_remote_control.d \
+mirf.d \
+spi.d \
+vm-buffer.d \
+vm.d
 
-motors.o: ../motors.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+OUTPUT_FILE_PATH +=elisa3-aseba.elf
 
-ports_io.o: ../ports_io.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+OUTPUT_FILE_PATH_AS_ARGS +=elisa3-aseba.elf
 
-usart.o: ../usart.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+ADDITIONAL_DEPENDENCIES:=
 
-variables.o: ../variables.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+OUTPUT_FILE_DEP:= ./makedep.mk
 
-behaviors.o: ../behaviors.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+LIB_DEP+= 
 
-speed_control.o: ../speed_control.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+LINKER_SCRIPT_DEP+= 
 
-adc.o: ../adc.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-sensors.o: ../sensors.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
+# AVR32/GNU C Compiler
 
-twimaster.o: ../twimaster.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-vm-buffer.o: ../../../transport/buffer/vm-buffer.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-vm.o: ../../../vm/vm.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-natives.o: ../../../vm/natives.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-utility.o: ../utility.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-ir_remote_control.o: ../ir_remote_control.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-mirf.o: ../mirf.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-spi.o: ../spi.c
-	$(CC) $(INCLUDES) $(CFLAGS) -c  $<
 
-##Link
-$(TARGET): $(OBJECTS)
-	 $(CC) $(LDFLAGS) $(OBJECTS) $(LINKONLYOBJECTS) $(LIBDIRS) $(LIBS) -o $(TARGET)
 
-%.hex: $(TARGET)
-	avr-objcopy -O ihex $(HEX_FLASH_FLAGS)  $< $@
 
-%.eep: $(TARGET)
-	-avr-objcopy $(HEX_EEPROM_FLAGS) -O ihex $< $@ || exit 0
 
-%.lss: $(TARGET)
-	avr-objdump -h -S $< > $@
 
-size: ${TARGET}
-	@echo
-	@avr-size -C --mcu=${MCU} ${TARGET}
 
-## Clean target
-.PHONY: clean
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+./%.o: .././%.c
+	@echo Building file: $<
+	@echo Invoking: AVR/GNU C Compiler : 4.9.2
+	$(QUOTE)C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avr8-gnu-toolchain\bin\avr-gcc.exe$(QUOTE)  -x c -funsigned-char -funsigned-bitfields -I"..\..\.." -I"C:\Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.0.90\include" -I"../../../../aseba/trunk" -I"../../../../aseba/trunk/vm" -I"../../../../aseba/trunk/transport/buffer"  -O3 -ffunction-sections -fdata-sections -fpack-struct -fshort-enums -Wall -mmcu=atmega2560 -B "C:\Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.0.90\gcc\dev\atmega2560" -c -gdwarf-2 -std=gnu99 -MD -MP -MF "$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -MT"$(@:%.o=%.o)"   -o "$@" "$<" 
+	@echo Finished building: $<
+	
+
+
+
+# AVR32/GNU Preprocessing Assembler
+
+
+
+# AVR32/GNU Assembler
+
+
+
+
+ifneq ($(MAKECMDGOALS),clean)
+ifneq ($(strip $(C_DEPS)),)
+-include $(C_DEPS)
+endif
+endif
+
+# Add inputs and outputs from these tool invocations to the build variables 
+
+# All Target
+all: $(OUTPUT_FILE_PATH) $(ADDITIONAL_DEPENDENCIES)
+
+$(OUTPUT_FILE_PATH): $(OBJS) $(USER_OBJS) $(OUTPUT_FILE_DEP) $(LIB_DEP) $(LINKER_SCRIPT_DEP)
+	@echo Building target: $@
+	@echo Invoking: AVR/GNU Linker : 4.9.2
+	$(QUOTE)C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avr8-gnu-toolchain\bin\avr-gcc.exe$(QUOTE) -o$(OUTPUT_FILE_PATH_AS_ARGS) $(OBJS_AS_ARGS) $(USER_OBJS) $(LIBS) -Wl,-Map="elisa3-aseba.map" -Wl,--start-group  -Wl,--end-group -Wl,-L"H:\lavoro\_elisa-3\aseba\aseba\trunk\vm"  -Wl,--gc-sections -mmcu=atmega2560 -B "C:\Program Files (x86)\Atmel\Studio\7.0\Packs\atmel\ATmega_DFP\1.0.90\gcc\dev\atmega2560"  
+	@echo Finished building target: $@
+	"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avr8-gnu-toolchain\bin\avr-objcopy.exe" -O ihex -R .eeprom -R .fuse -R .lock -R .signature -R .user_signatures  "elisa3-aseba.elf" "elisa3-aseba.hex"
+	"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avr8-gnu-toolchain\bin\avr-objcopy.exe" -j .eeprom  --set-section-flags=.eeprom=alloc,load --change-section-lma .eeprom=0  --no-change-warnings -O ihex "elisa3-aseba.elf" "elisa3-aseba.eep" || exit 0
+	"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avr8-gnu-toolchain\bin\avr-objdump.exe" -h -S "elisa3-aseba.elf" > "elisa3-aseba.lss"
+	"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avr8-gnu-toolchain\bin\avr-objcopy.exe" -O srec -R .eeprom -R .fuse -R .lock -R .signature -R .user_signatures "elisa3-aseba.elf" "elisa3-aseba.srec"
+	"C:\Program Files (x86)\Atmel\Studio\7.0\toolchain\avr8\avr8-gnu-toolchain\bin\avr-size.exe" "elisa3-aseba.elf"
+	
+	
+
+
+
+
+
+# Other Targets
 clean:
-	-rm -rf $(OBJECTS) elisa3-aseba.elf dep/* elisa3-aseba.hex elisa3-aseba.eep elisa3-aseba.lss elisa3-aseba.map
-
-
-## Other dependencies
--include $(shell mkdir dep 2>NUL) $(wildcard dep/*)
-
+	-$(RM) $(OBJS_AS_ARGS) $(EXECUTABLES)  
+	-$(RM) $(C_DEPS_AS_ARGS)   
+	rm -rf "elisa3-aseba.elf" "elisa3-aseba.a" "elisa3-aseba.hex" "elisa3-aseba.lss" "elisa3-aseba.eep" "elisa3-aseba.map" "elisa3-aseba.srec" "elisa3-aseba.usersignatures"
+	

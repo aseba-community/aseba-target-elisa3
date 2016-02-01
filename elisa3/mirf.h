@@ -67,7 +67,12 @@ void flush_rx_fifo();
 void writeAckPayload(unsigned char *data, unsigned char size);
 void flushTxFifo();
 void handleRFCommands();
-
+uint8_t readPayloadWidthFromTopFifo();
+uint8_t readPayloadWidthFromPipe0();
+void rfEnableDebugMode();
+void rfDisableDebugMode();
+void rfDebugSendData();
+void rfDebugNextPacket();
 
 // Public extended functions
 void mirf_config_register(uint8_t reg, uint8_t value);

@@ -174,12 +174,18 @@ void handleIRRemoteCommands() {
 
 		if(command_received) {
 
+			command_received = 0;
+			
+			if((getTime100MicroSec() - lastCmdTime) < PAUSE_200_MSEC) {
+				return;
+			}
+
+			lastCmdTime = getTime100MicroSec();
+
             irCommand = ir_remote_get_data();
 
-		    //usartTransmit(irCommand);
-
-			command_received = 0;
-
+		    //usartTransmit(irCommand);			
+			
 			switch(irCommand) {
 				// sometimes there are two cases for the same command because two different
 				// remote controls are used; one of this do not contain "numbers"
@@ -187,6 +193,15 @@ void handleIRRemoteCommands() {
 				case 51:
 					pwm_right_desired = 0;
 					pwm_left_desired = 0;
+					if(currentSelector == 8) {
+						calibrateSensors();
+						proximityResult[8] = 1023;	// because the first time this value could be low after calibration
+						proximityResult[11] = 1023;	// and in that case a false black line will be detected
+						calibState = CALIBRATION_STATE_FIND_THRS_0;
+						calibVelIndex = 1;
+						calibrateOdomFlag = 1;
+
+					}
 					break;
 
 				case 2:	// both motors forward
@@ -198,8 +213,8 @@ void handleIRRemoteCommands() {
 					}
 					pwm_right_desired += STEP_MOTORS;
 					pwm_left_desired += STEP_MOTORS;
-	                if (pwm_right_desired > (MAX_MOTORS_PWM/2)) pwm_right_desired = (MAX_MOTORS_PWM/2);
-    	            if (pwm_left_desired > (MAX_MOTORS_PWM/2)) pwm_left_desired = (MAX_MOTORS_PWM/2);
+	                if (pwm_right_desired > 127) pwm_right_desired = 127;
+    	            if (pwm_left_desired > 127) pwm_left_desired = 127;
                		break;
 
 				case 8:	// both motors backward
@@ -211,44 +226,44 @@ void handleIRRemoteCommands() {
 					}
 					pwm_right_desired -= STEP_MOTORS;
 					pwm_left_desired -= STEP_MOTORS;
-	                if (pwm_right_desired < -(MAX_MOTORS_PWM/2)) pwm_right_desired = -(MAX_MOTORS_PWM/2);
-    	            if (pwm_left_desired < -(MAX_MOTORS_PWM/2)) pwm_left_desired = -(MAX_MOTORS_PWM/2);
+	                if (pwm_right_desired < -127) pwm_right_desired = -127;
+    	            if (pwm_left_desired < -127) pwm_left_desired = -127;
                   	break;
 
 				case 6:	// both motors right
 				case 47:
 					pwm_right_desired -= STEP_MOTORS;
 					pwm_left_desired += STEP_MOTORS;
-                	if (pwm_right_desired<-(MAX_MOTORS_PWM/2)) pwm_right_desired=-(MAX_MOTORS_PWM/2);
-                	if (pwm_left_desired>(MAX_MOTORS_PWM/2)) pwm_left_desired=(MAX_MOTORS_PWM/2);
+                	if (pwm_right_desired<-127) pwm_right_desired=-127;
+                	if (pwm_left_desired>127) pwm_left_desired=127;
 					break;
 
 				case 4:	// both motors left
 				case 46:
 					pwm_right_desired += STEP_MOTORS;
 					pwm_left_desired -= STEP_MOTORS;
-	                if (pwm_right_desired>(MAX_MOTORS_PWM/2)) pwm_right_desired=(MAX_MOTORS_PWM/2);
-	   	            if (pwm_left_desired<-(MAX_MOTORS_PWM/2)) pwm_left_desired=-(MAX_MOTORS_PWM/2);
+	                if (pwm_right_desired>127) pwm_right_desired=127;
+	   	            if (pwm_left_desired<-127) pwm_left_desired=-127;
 					break;
 
 				case 3:	// left motor forward
 					pwm_left_desired += STEP_MOTORS;
-	               	if (pwm_left_desired>(MAX_MOTORS_PWM/2)) pwm_left_desired=(MAX_MOTORS_PWM/2);
+	               	if (pwm_left_desired>127) pwm_left_desired=127;
 					break;
 
 				case 1:	// right motor forward
 					pwm_right_desired += STEP_MOTORS;
-	                if (pwm_right_desired>(MAX_MOTORS_PWM/2)) pwm_right_desired=(MAX_MOTORS_PWM/2);
+	                if (pwm_right_desired>127) pwm_right_desired=127;
 					break;
 
 				case 9:	// left motor backward
 					pwm_left_desired -= STEP_MOTORS;
-	           	    if (pwm_left_desired<-(MAX_MOTORS_PWM/2)) pwm_left_desired=-(MAX_MOTORS_PWM/2);
+	           	    if (pwm_left_desired<-127) pwm_left_desired=-127;
 					break;
 
 				case 7:	// right motor backward
 					pwm_right_desired -= STEP_MOTORS;
-	               	if (pwm_right_desired<-(MAX_MOTORS_PWM/2)) pwm_right_desired=-(MAX_MOTORS_PWM/2);
+	               	if (pwm_right_desired<-127) pwm_right_desired=-127;
 					break;
 
 	           	case 0:	// colors
@@ -333,14 +348,14 @@ void handleIRRemoteCommands() {
 
 			// convert pwm deisred in absolute speed (0 to 100)
 			if(pwm_right_desired >= 0) {
-				speedr = pwm_right_desired >> 2;
+				speedr = pwm_right_desired;
 			} else {
-				speedr = (-pwm_right_desired) >> 2;
+				speedr = (-pwm_right_desired);
 			}
 			if(pwm_left_desired >= 0) {
-				speedl = pwm_left_desired >> 2;
+				speedl = pwm_left_desired;
 			} else {
-				speedl = (-pwm_left_desired) >> 2;
+				speedl = (-pwm_left_desired);
 			}
 
 		}	// ir command received
