@@ -1,0 +1,3 @@
+[submodule "aseba"]
+	path = aseba
+	url = https://github.com/aseba-community/aseba.git

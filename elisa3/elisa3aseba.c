@@ -118,6 +118,7 @@ struct Elisa3Variables
 	
 	// local communication
 	sint16 irRxData;
+	sint16 irRxId;
 	sint16 irTxData;
 
 //	// Charge state (0 => robot not in charge; 1 => robot in charge).
@@ -146,25 +147,26 @@ AsebaVMDescription vmDescription = {
 		{ 1, "source" }, 		// nor this one
 		{ argsSize, "args" },	// neither this one
 		{1, "_fwver"},
-		{1, "motor.left.target"},
-		{1, "motor.right.target"},
-		{1, "motor.left.speed"},
-		{1, "motor.right.speed"},
+		{1, "mot.left.target"},
+		{1, "mot.right.target"},
+		{1, "mot.left.speed"},
+		{1, "mot.right.speed"},
 		{8, "led.green"},
 		{3, "led.rgb"},
 		{1, "ir.tx.front"},
 		{1, "ir.tx.back"},
 		{1, "button"},
 	    {8, "prox"},
-		{8, "prox.ambient"},
+		{8, "prox.amb"},
 		{4, "ground"},
-		{4, "ground.ambient"},
+		{4, "ground.amb"},
 		{3, "acc"},
-		{1, "selector"},
+		{1, "sel"},
 		{1, "rc5"},
 		{1, "_bat.adc"},
 		{1, "bat.percent"},
 		{1, "prox.comm.rx"},
+		{1, "prox.comm.rx.id"},	
 		{1, "prox.comm.tx"},
 		{1, "odom.theta"},
 		{1, "odom.x"},
@@ -212,8 +214,8 @@ enum Events
 };
 
 static const AsebaLocalEventDescription localEvents[] = { 
-	{"ir.sensors", "Proximity and ground sensors updated"},
-	{"acc", "Accelerometer values updated"},
+	{"ir.sensors", "Proximity and ground updated"},
+	{"acc", "Accelerometer updated"},
 	{"button", "Button status changed"},
 	{"prox.comm", "Data received on local communication"},
 	{"rc5", "RC5 message received"},
@@ -471,6 +473,7 @@ void updateRobotVariables() {
 		if(irCommDataAvailable()==1) {
 			elisa3Variables.irRxData = irCommReadData();
 			SET_EVENT(EVENT_DATA);
+			elisa3Variables.irRxId = irCommReceivingSensor();
 		}
 	}
 

@@ -81,4 +81,20 @@ void resetOdom(AsebaVMState * vm) {
 	resetOdometry();
 }
 
+AsebaNativeFunctionDescription AsebaNativeDescription_isVertical = {
+	"robot.isVertical",
+	"dest = 1 (vertical) or 0 (horizontal)",
+	{
+		{-1, "dest" },
+		{0,0},
+	}
+};
+
+void isVertical(AsebaVMState * vm) {
+	if(robotPosition == HORIZONTAL_POS) {
+		vm->variables[AsebaNativePopArg(vm)] = 0;
+	} else {
+		vm->variables[AsebaNativePopArg(vm)] = 1;
+	}
+}
 

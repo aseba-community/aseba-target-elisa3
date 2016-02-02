@@ -38,7 +38,7 @@
 #endif
 
 #ifndef UART_BUFF_SIZE
-#define UART_BUFF_SIZE 256
+#define UART_BUFF_SIZE 206
 #endif
 
 #define LINE_IN_THR 400

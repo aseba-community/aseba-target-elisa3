@@ -45,19 +45,18 @@
       <AvrGcc>
   <avrgcc.common.Device>-mmcu=atmega2560 -B "%24(PackRepoDir)\atmel\ATmega_DFP\1.0.90\gcc\dev\atmega2560"</avrgcc.common.Device>
   <avrgcc.common.outputfiles.hex>True</avrgcc.common.outputfiles.hex>
-  <avrgcc.common.outputfiles.lss>True</avrgcc.common.outputfiles.lss>
-  <avrgcc.common.outputfiles.eep>True</avrgcc.common.outputfiles.eep>
-  <avrgcc.common.outputfiles.srec>True</avrgcc.common.outputfiles.srec>
+  <avrgcc.common.outputfiles.lss>False</avrgcc.common.outputfiles.lss>
+  <avrgcc.common.outputfiles.eep>False</avrgcc.common.outputfiles.eep>
+  <avrgcc.common.outputfiles.srec>False</avrgcc.common.outputfiles.srec>
   <avrgcc.common.outputfiles.usersignatures>False</avrgcc.common.outputfiles.usersignatures>
   <avrgcc.compiler.general.ChangeDefaultCharTypeUnsigned>True</avrgcc.compiler.general.ChangeDefaultCharTypeUnsigned>
   <avrgcc.compiler.general.ChangeDefaultBitFieldUnsigned>True</avrgcc.compiler.general.ChangeDefaultBitFieldUnsigned>
   <avrgcc.compiler.directories.IncludePaths>
     <ListValues>
-      <Value>..\..\..</Value>
       <Value>%24(PackRepoDir)\atmel\ATmega_DFP\1.0.90\include</Value>
-      <Value>../../../../aseba/trunk</Value>
-      <Value>../../../../aseba/trunk/vm</Value>
-      <Value>../../../../aseba/trunk/transport/buffer</Value>
+      <Value>../../aseba</Value>
+      <Value>../../aseba/vm</Value>
+      <Value>../../aseba/transport/buffer</Value>
     </ListValues>
   </avrgcc.compiler.directories.IncludePaths>
   <avrgcc.compiler.optimization.level>Optimize most (-O3)</avrgcc.compiler.optimization.level>
@@ -67,7 +66,8 @@
   <avrgcc.compiler.miscellaneous.OtherFlags>-gdwarf-2 -std=gnu99</avrgcc.compiler.miscellaneous.OtherFlags>
   <avrgcc.linker.libraries.LibrarySearchPaths>
     <ListValues>
-      <Value>H:\lavoro\_elisa-3\aseba\aseba\trunk\vm</Value>
+      <Value>../../aseba/transport/buffer</Value>
+      <Value>../../aseba/vm</Value>
     </ListValues>
   </avrgcc.linker.libraries.LibrarySearchPaths>
   <avrgcc.assembler.general.AssemblerFlags>-Wall -gdwarf-2 -O3 -std=gnu99 -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums</avrgcc.assembler.general.AssemblerFlags>
@@ -83,6 +83,18 @@
   </PropertyGroup>
   <Import Project="$(AVRSTUDIO_EXE_PATH)\\Vs\\Compiler.targets" />
   <ItemGroup>
+    <Compile Include="..\aseba\transport\buffer\vm-buffer.c">
+      <SubType>compile</SubType>
+      <Link>vm-buffer.c</Link>
+    </Compile>
+    <Compile Include="..\aseba\vm\natives.c">
+      <SubType>compile</SubType>
+      <Link>natives.c</Link>
+    </Compile>
+    <Compile Include="..\aseba\vm\vm.c">
+      <SubType>compile</SubType>
+      <Link>vm.c</Link>
+    </Compile>
     <Compile Include="eepromIO.c">
       <SubType>compile</SubType>
     </Compile>
@@ -105,12 +117,6 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="motors.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="natives.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="natives.h">
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="ports_io.h">
@@ -198,18 +204,6 @@
       <SubType>compile</SubType>
     </Compile>
     <Compile Include="spi.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="vm-buffer.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="vm-buffer.h">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="vm.c">
-      <SubType>compile</SubType>
-    </Compile>
-    <Compile Include="vm.h">
       <SubType>compile</SubType>
     </Compile>
   </ItemGroup>

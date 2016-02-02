@@ -15,24 +15,24 @@ extern AsebaNativeFunctionDescription AsebaNativeDescription_setCliffAvoidance;
 void setCliffAvoidance(AsebaVMState *vm);
 extern AsebaNativeFunctionDescription AsebaNativeDescription_resetOdom;
 void resetOdom(AsebaVMState *vm);
+extern AsebaNativeFunctionDescription AsebaNativeDescription_isVertical;
+void isVertical(AsebaVMState *vm);
 
 #define ELISA_NATIVES_DESCRIPTIONS \
 	&AsebaNativeDescription_prox_network, \
 	&AsebaNativeDescription_setObstacleAvoidance, \
 	&AsebaNativeDescription_setCliffAvoidance, \
-	&AsebaNativeDescription_resetOdom
+	&AsebaNativeDescription_resetOdom, \
+	&AsebaNativeDescription_isVertical
 	//&AsebaNativeDescription_calibrate
-	
-
-	
+		
 #define ELISA_NATIVES_FUNCTIONS \
 	prox_network, \
 	setObstacleAvoidance, \
 	setCliffAvoidance, \
-	resetOdom
+	resetOdom, \
+	isVertical
 	//calibrate
-	
-	
 
 #endif
 
