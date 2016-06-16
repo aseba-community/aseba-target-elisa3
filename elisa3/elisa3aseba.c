@@ -18,13 +18,6 @@
 	along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
 
-/*
-	WARNING: you have to change the size of the UART 1 e-puck reception buffer to hold
-	at the biggest possible packet (probably bytecode + header). Otherwise if you set
-	a new bytecode while busy (for instance while sending description), you might end up
-	in a dead-lock.
-*/
-
 #include <avr/eeprom.h>
 #include <avr/pgmspace.h>
 #include <util/atomic.h>
@@ -40,8 +33,6 @@
 #include "elisa_natives.h"
 #include "variables.h"
 
-#define vmVariablesSize (sizeof(struct EPuckVariables) / sizeof(sint16))
-#define vmStackSize 32
 #define argsSize 32
 
 #define CLAMP(v, vmin, vmax) ((v) < (vmin) ? (vmin) : (v) > (vmax) ? (vmax) : (v))
@@ -71,8 +62,8 @@ History:
 #define VM_BYTECODE_SIZE 1024
 #define VM_STACK_SIZE 32
 
-int EEMEM bytecode_version;
-unsigned char EEMEM eeprom_bytecode[VM_BYTECODE_SIZE*2];
+uint16_t EEMEM bytecode_version;
+uint16_t EEMEM eeprom_bytecode[VM_BYTECODE_SIZE];
 
 struct Elisa3Variables
 {
@@ -279,7 +270,8 @@ void AsebaSendBuffer(AsebaVMState *vm, const uint8* data, uint16 length)
 uint8 uartGetUInt8()
 {
 	unsigned char c=1;
-	unsigned int i=0;
+	commError = 0;
+	lastTick = getTime100MicroSec();
 
 	while(c) {
 
@@ -288,8 +280,7 @@ uint8 uartGetUInt8()
 				c=0;
 			}
 		}
-		i++;
-		if(i>100) {							// timeout
+		if((getTime100MicroSec() - lastTick) >= PAUSE_500_MSEC) { // Timeout.
 			commError=1;
 			return 0;
 		}
@@ -324,38 +315,35 @@ uint16 uartGetUInt16()
 
 uint16 AsebaGetBuffer(AsebaVMState *vm, uint8* data, uint16 maxLength, uint16* source)
 {
-
-	uint16 ret = 0;
-
+	ATOMIC_BLOCK(ATOMIC_RESTORESTATE) {	// Handle concurrent byteCount access
+		if(byteCount == 0) {			// (accessed here and within ISR rx interrupt).
+			return 0;
+		}
+	}
+	
 	uint16 len = uartGetUInt16() + 2;	// msg type + data
-
-	if(commError) {
-		commError = 0;
+	if(commError) {		
 		return 0;
 	}
-	if(len <= 2) {
+	
+	if(len > maxLength) { // Wrong data received.
 		return 0;
 	}
 
 	*source = uartGetUInt16();
 	if(commError) {
-		commError = 0;
 		return 0;
-	}	
+	}
 	
 	uint16 i;
 	for (i = 0; i < len; i++) {
 		data[i] = uartGetUInt8();
 		if(commError) {
-			commError = 0;
 			return 0;
 		}
 	}
-	
-	ret = len;
 
-	return ret;
-
+	return len;
 }	
 
 void updateRobotVariables() {
@@ -518,13 +506,16 @@ void AsebaWriteBytecode(AsebaVMState *vm) {
 
 	eeprom_write_word(EE_addr,i);
 
+//	eeprom_write_block(vm->bytecode, eeprom_bytecode, VM_BYTECODE_SIZE*2);
+
 	EE_addr = (uint16_t*)eeprom_bytecode;
 
-	for(i = 0; i < 2048; i+=2) {
-		
-		eeprom_write_word(EE_addr, vm->bytecode[i/2]);
-		EE_addr ++;
+	for(i=0; i<VM_BYTECODE_SIZE; i++) {	
+		eeprom_write_word(EE_addr, vm->bytecode[i]);
+		EE_addr++;
 	}
+
+//	UCSR0A &= ~(1 << FE0) & ~(1 << DOR0) & ~(1 << UPE0); // Clear uart error flags.
 
 	turnOffGreenLeds();
 
@@ -542,7 +533,11 @@ void initAseba() {
 	elisa3Variables.rgbLeds[0] = 0;
 	elisa3Variables.rgbLeds[1] = 0;
 	elisa3Variables.rgbLeds[2] = 0;
-	name[7] = '0' + selector;
+	if(selector >= 10) {
+		name[7] = '0' + (selector-10);
+	} else {
+		name[7] = '0' + selector;
+	}
 	turnOffGreenLeds();
 	elisa3Variables.fwversion = FW_VERSION;
 }
@@ -564,15 +559,16 @@ int main()
 	// ...only load bytecode if version is the same as current one
 	if(i == ASEBA_PROTOCOL_VERSION)
 	{
+
 		EE_addr = (uint16_t*)eeprom_bytecode;
 			
-		for( i = 0; i< 2048; i += 2) {
-			vmState.bytecode[i/2] = eeprom_read_word(EE_addr);
+		for(i=0; i<VM_BYTECODE_SIZE; i++) {
+			vmState.bytecode[i] = eeprom_read_word(EE_addr);
 			EE_addr++;
 		}
 		
 		// Init the vm
-		AsebaVMSetupEvent(&vmState, ASEBA_EVENT_INIT);	
+		AsebaVMSetupEvent(&vmState, ASEBA_EVENT_INIT);
 	}
 	
 
@@ -582,14 +578,14 @@ int main()
 
 	if(MCUSR & (1 << 1)) {	// external reset event (caused by the serial connection opened) => send description to aseba
 		MCUSR &= ~(1<<1);
-		AsebaSendDescription(&vmState);
+		//AsebaSendDescription(&vmState); // Not necessary.
 	}
 
 	while (1) {
 
 		AsebaProcessIncomingEvents(&vmState);
 		updateRobotVariables();
-		AsebaVMRun(&vmState, 100);
+		AsebaVMRun(&vmState, 1000);
 
 		if (AsebaMaskIsClear(vmState.flags, ASEBA_VM_STEP_BY_STEP_MASK) || AsebaMaskIsClear(vmState.flags, ASEBA_VM_EVENT_ACTIVE_MASK))
 		{
@@ -603,8 +599,7 @@ int main()
 				}
 			}
 
-			if(i)
-			{
+			if(i && !(AsebaMaskIsSet(vmState.flags, ASEBA_VM_STEP_BY_STEP_MASK) &&  AsebaMaskIsSet(vmState.flags, ASEBA_VM_EVENT_ACTIVE_MASK))) {
 				i--;
 				CLEAR_EVENT(i);
 				elisa3Variables.source = vmState.nodeId;
